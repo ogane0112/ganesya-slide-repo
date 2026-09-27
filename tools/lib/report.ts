@@ -28,12 +28,16 @@ export interface DeckResult {
   slides: number
   /** レポートからの相対パス(サムネイル一覧) */
   contactSheet?: string
+  /** Jev精査で指摘のあったスライドの原文(スライド番号 → Markdown) */
+  sources?: Record<number, string>
 }
 
 export interface Report {
   generatedAt: string
   decks: DeckResult[]
   findings: Finding[]
+  /** 精査をスキップした理由など、レポート冒頭に出す注記 */
+  notes?: string[]
 }
 
 const LEVEL_LABEL: Record<Level, string> = {
@@ -58,6 +62,7 @@ export function renderMarkdown(report: Report): string {
   lines.push(
     fail ? `**NG**: 要対応 ${fail}件 / その他 ${other}件` : `**OK**: 要対応なし(その他 ${other}件)`,
     '',
+    ...(report.notes ?? []).map((n) => `> ${n}\n`),
     '| デッキ | 枚数 | 要対応 | その他 |',
     '| --- | --- | --- | --- |',
   )
@@ -80,6 +85,13 @@ export function renderMarkdown(report: Report): string {
       }
     } else {
       lines.push('指摘なし')
+    }
+    const sources = Object.entries(d.sources ?? {})
+    if (sources.length) {
+      lines.push('', '### 指摘スライドの原文', '', 'Claude Code に「スライドNを直して」と頼むときの材料にする。')
+      for (const [no, md] of sources) {
+        lines.push('', `<details><summary>スライド ${no}</summary>`, '', '````markdown', md, '````', '', '</details>')
+      }
     }
     if (d.contactSheet) lines.push('', `![サムネイル一覧](${d.contactSheet})`)
   }

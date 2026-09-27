@@ -1,25 +1,27 @@
 # Jev精査(J-xx)の質問と判定の閾値。数値は仮の初期値なので、実際のスライドで結果を見ながら調整する
 #
 # 判定は3段階: ok / caution(注意) / warn(警告)
-#   noul : 確率(0〜1)で判定
-#          bad: high → 確率が高いほど悪い(caution 以上で注意、warn 以上で警告)
-#          bad: low  → 確率が低いほど悪い(caution 以下で注意、warn 以下で警告)
-#   score: 段階ごとに注意・警告を割り当てる(どちらにも無い段階は ok)
+#   noul  : Jevが返す確率 P(true)(0〜1)で判定
+#           bad: high → 確率が高いほど悪い(caution 以上で注意、warn 以上で警告)
+#           bad: low  → 確率が低いほど悪い(caution 以下で注意、warn 以下で警告)
+#   score : Jevは段階の期待値を小数で返す(levels が5つなら 1.0〜5.0 に換算して判定)
+#           bad: high / low は noul と同じ向き。bad: both は ideal からのずれ(絶対値)で判定
 #   choice: 判定しない(J-05 は R-07 の構成チェックに使う)
 #
 # failOn: どの判定でCIを失敗させるか(none / warn / caution)。閾値を調整するまでは none 推奨
 # 質問ごとに failOn を書くと上書きできる
 
+model: typesafe-ai/jev
 failOn: none
 
-# 確信度がこれ未満の答えは指摘に残さない(0 なら無効)
-minConfidence: 0
+# タイトルスライド(<!-- _class: title -->)では聞かない質問
+skipOnTitleSlide: [J-02, J-03, J-04]
 
 questions:
   J-01:
     type: noul
     target: slide
-    text: このスライドに技術的に誤っている可能性のある記述が含まれる
+    text: このスライドには、技術的に誤っている可能性のある記述が含まれている
     bad: high
     caution: 0.5
     warn: 0.8
@@ -27,15 +29,17 @@ questions:
   J-02:
     type: score
     target: slide
-    text: 1枚に載せる情報量は適切か(1=少なすぎ、3=適切、5=多すぎ)
-    scale: [1, 5]
-    caution: [2, 4]
-    warn: [1, 5]
+    text: 1枚のスライドに載せている情報量
+    levels: [少なすぎる, やや少ない, ちょうどよい, やや多い, 多すぎる]
+    bad: both
+    ideal: 3
+    caution: 1
+    warn: 1.5
 
   J-03:
     type: noul
     target: slide
-    text: 見出しと本文の内容は一致している
+    text: スライドの見出しと本文の内容が一致している
     bad: low
     caution: 0.5
     warn: 0.3
@@ -43,29 +47,36 @@ questions:
   J-04:
     type: score
     target: slide+deck
-    text: 対象読者に対して前提知識の説明は足りているか(1=まったく足りない、5=十分)
-    scale: [1, 5]
-    caution: [3]
-    warn: [1, 2]
+    text: デッキの対象読者にとって、このスライドの前提知識の説明は足りているか
+    levels: [まったく足りない, 足りない, ふつう, おおむね足りている, 十分]
+    bad: low
+    caution: 3
+    warn: 2
 
   J-05:
     type: choice
     target: slide
-    text: このスライドの役割
-    choices: [導入, 説明, 例, まとめ, 演習]
+    text: このスライドのデッキ内での役割
+    choices:
+      導入: 話題や目的を示す
+      説明: 概念や仕組みを説明する
+      例: 具体例やコード例を示す
+      まとめ: 要点を振り返る
+      演習: 読者に手を動かしてもらう
 
   J-06:
     type: score
     target: deck
-    text: デッキ全体の流れは論理的につながっているか(1=つながっていない、5=とても論理的)
-    scale: [1, 5]
-    caution: [3]
-    warn: [1, 2]
+    text: デッキ全体の見出しの並びは、論理的な流れになっているか
+    levels: [つながっていない, やや飛躍がある, ふつう, おおむね論理的, とても論理的]
+    bad: low
+    caution: 3
+    warn: 2
 
   J-07:
     type: noul
     target: slide
-    text: 社外秘・個人情報らしき記述が含まれる
+    text: このスライドには、社外秘の情報や個人情報らしき記述が含まれている
     bad: high
     caution: 0.3
     warn: 0.6
