@@ -8,8 +8,8 @@ Marpで作った学習・まとめ・講座スライドを集約し、作成か�
 - 公開リポジトリ。職場のスライドはコンプライアンス上扱わない(スコープ外)
 - APIキーは `.env`(ローカル)/ GitHub Secrets(CI)。コード・ログ・コミットに含めない。`.env.example` を参照
 - Jevは Vercel AI Gateway 経由(モデル名 `typesafe-ai/jev`、AI SDK 7 の評価用関数から呼ぶ)。
-  2026年9月公開の早期提供モデルで仕様が変わりうるため、呼び出しは1モジュールに閉じ込め、Claudeのみで判定するフォールバックを用意する
-- 修正案の文章生成は Claude(Jevは文章を生成しない。判定=Jev、文章=Claude、数値チェック=コード)
+  2026年9月公開の早期提供モデルで仕様が変わりうるため、呼び出しは1モジュールに閉じ込める。Jevが使えないときは精査だけ警告付きでスキップ(レイアウト検査は続ける)
+- Claude API(LLM API)は使わない。修正案はレポート(指摘スライドの原文付き)を見ながら Claude Code との対話で作る(判定=Jev、文章=人+Claude Code、数値チェック=コード)
 - 検査・変換ツールは Node.js(TypeScript)、PowerPoint操作だけ PowerShell + COM
 - 完成済みの既存スライドは `archive/` に置き、精査・検査の対象外(索引とPages公開には含める)
 - PowerPointテンプレート(.potx)は自作して `templates/` に置く
@@ -25,10 +25,12 @@ Marpで作った学習・まとめ・講座スライドを集約し、作成か�
 
 ## 現状
 
-- 済: 要件定義、テーマ、サンプルデッキ `decks/learning/2026-09-ecs-fargate/`、レイアウト検査の試作 `tools/layout/snapshot.mjs`(L-01/L-02/L-07相当)
+- 済: 要件定義、テーマ、サンプルデッキ `decks/learning/2026-09-ecs-fargate/`
 - 済(フェーズ1): フォルダ構成、雛形 `templates/deck/slides.md`、`tools/cli.ts`(new / build / validate / list)。archive/ への既存スライドの集約はユーザー作業待ち
+- 済(フェーズ2): レイアウト検査 `tools/layout/`(L-01/L-02/L-03/L-07)、統合レポート `tools/lib/report.ts`(reports/report.md・json)、CI `.github/workflows/check.yml`
 - 未決: 検査の閾値のうち L-04(1枚の行数・文字数上限)と、種別(学習/まとめ/講座)ごとの見た目の差 → ユーザーと相談して決める
-- 次のタスク: `docs/requirements.md` の「開発フェーズ」2(レイアウト検査)→3→4 の順
+- 済(フェーズ3の準備): Jevの判定を OK / 注意 / 警告 に振り分ける `tools/review/verdict.ts`、質問と閾値 `config/review.yml`(閾値はユーザーが調整する前提の仮値)。Jevの呼び出し本体は未実装(AI_GATEWAY_API_KEY 待ち)
+- 次のタスク: `docs/requirements.md` の「開発フェーズ」3(Jev精査)→4 の順。Jevの指摘も `Finding` 型でレポートに統合する
 
 ## コマンド
 
@@ -38,15 +40,19 @@ npx marp --server decks                      # プレビュー
 npm run new -- <slug> --category 講座 [--title ...]   # 雛形から新規デッキ
 npm run validate                             # frontmatter検査(M-02、archive/は警告のみ)
 npm run build [-- <パス...>] [--format html,pdf,pptx]   # dist/<デッキのパス>/ に一括出力
+npm run check [-- <パス...>] [--no-images]   # レイアウト検査 → reports/(Must違反でexit 1、archive/は対象外)
 npm run typecheck
-node tools/layout/snapshot.mjs <slides.md> dist/preview   # PNG書き出し+はみ出し検査(違反でexit 1)
+npm test                                     # tools/**/*.test.ts(Chromiumが必要)
 ```
 
 ## 注意点(試作で分かったこと)
 
 - Marp標準テーマは `place-content: safe center center` で中身を縦中央に寄せる。上詰め系の調整は `display:flex` + `justify-content` を `!important` で上書きしている
 - テーマのGoogle Fonts `@import` はネットワーク制限下だと効かない。ローカル描画ではフォントをOSにインストールしておく
-- Marp CLIの `--images png` はヘッドレスChromeが不安定なことがあった。検査・プレビュー画像は Playwright で自前描画する方式(snapshot.mjs)を基本にする
+- Marp CLIの `--images png` はヘッドレスChromeが不安定なことがあった。検査・プレビュー画像は Playwright で自前描画する方式(tools/layout/check.ts)を基本にする
+- Marpはコードブロックがはみ出すと自動縮小する(`<pre is="marp-pre">`)。検査では `script: false` で自動縮小を切り、`pre` は `overflow:hidden` にして L-02 だけで数える
+- ブラウザ内で動かす検査コードは `tools/layout/inpage.js`(素のJS)。tsxで変換した関数を `page.evaluate` に渡すと `__name` 未定義で壊れることがある
+- L-03 はテーマ装飾のページ番号(`section::after`、18px)を対象外にしている。閾値は `config/layout.yml`
 - Playwrightのブラウザを別パスで使う場合は `CHROME_PATH` 環境変数で指定できる。`build` のPDF/PPTXも `CHROME_PATH` → Playwright同梱Chromium → Marp CLIの自動検出の順で探す
 - TypeScriptは tsx で直接実行(ビルド不要)。相対importは `.ts` 拡張子付きで書く
 - 原稿でHTMLのdivを使うため `.marprc.yml` で `html: true`。div内でMarkdownを使うときは前後に空行を入れる

@@ -26,8 +26,11 @@ npm run preview                                           # ブラウザでプ�
 npm run validate                                          # frontmatterの検査
 npm run build                                             # 全デッキを dist/ にHTML/PDF/PPTXで出力
 npm run build -- decks/learning --format html             # 対象と形式を絞って出力
+npm run check                                             # レイアウト検査(はみ出し・文字サイズ)→ reports/report.md
 ```
 
 - デッキは `decks/<learning|summary|course>/<YYYY-MM-slug>/slides.md` に置き、frontmatter に `title` `category`(学習/まとめ/講座) `tags` `status`(draft/review/done) `created` `updated` を書く
 - 出力先は `dist/<デッキのパス>/` で、`index.html`・`<slug>.pdf`・`<slug>.pptx` ができる(`images/` もコピー)
-- PDF/PPTXにはChromeが必要。見つからないときは `CHROME_PATH` でパスを指定する
+- `npm run check` は描画結果から L-01(はみ出し)・L-02(コードの横はみ出し)・L-03(20px未満の文字)を検出し、違反があれば終了コード1。スライドごとのPNGとサムネイル一覧(`contact.png`、違反は赤枠)も `reports/` に出る。閾値は `config/layout.yml`
+- PRを出すと GitHub Actions で同じ検査が走り、違反は原稿の該当行に注釈される
+- PDF/PPTX・検査にはChrome(Chromium)が必要。見つからないときは `CHROME_PATH` でパスを指定する

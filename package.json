@@ -8,10 +8,11 @@
     "build": "tsx tools/cli.ts build",
     "build:html": "tsx tools/cli.ts build --format html",
     "validate": "tsx tools/cli.ts validate",
+    "check": "tsx tools/cli.ts check",
     "list": "tsx tools/cli.ts list",
     "typecheck": "tsc",
-    "preview": "marp --server decks",
-    "check:layout": "node tools/layout/snapshot.mjs"
+    "test": "tsx --test \"tools/**/*.test.ts\"",
+    "preview": "marp --server decks"
   },
   "devDependencies": {
     "@marp-team/marp-cli": "^4.5.1",
