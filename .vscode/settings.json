@@ -1,0 +1,4 @@
+{
+  "markdown.marp.themes": ["./themes/wakaba.css"],
+  "markdown.marp.enableHtml": true
+}
