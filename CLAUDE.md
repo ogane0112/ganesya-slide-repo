@@ -8,8 +8,8 @@ Marpで作った学習・まとめ・講座スライドを集約し、作成か�
 - 公開リポジトリ。職場のスライドはコンプライアンス上扱わない(スコープ外)
 - APIキーは `.env`(ローカル)/ GitHub Secrets(CI)。コード・ログ・コミットに含めない。`.env.example` を参照
 - Jevは Vercel AI Gateway 経由(モデル名 `typesafe-ai/jev`、AI SDK 7 の評価用関数から呼ぶ)。
-  2026年9月公開の早期提供モデルで仕様が変わりうるため、呼び出しは1モジュールに閉じ込め、Claudeのみで判定するフォールバックを用意する
-- 修正案の文章生成は Claude(Jevは文章を生成しない。判定=Jev、文章=Claude、数値チェック=コード)
+  2026年9月公開の早期提供モデルで仕様が変わりうるため、呼び出しは1モジュールに閉じ込める。Jevが使えないときは精査だけ警告付きでスキップ(レイアウト検査は続ける)
+- Claude API(LLM API)は使わない。修正案はレポート(指摘スライドの原文付き)を見ながら Claude Code との対話で作る(判定=Jev、文章=人+Claude Code、数値チェック=コード)
 - 検査・変換ツールは Node.js(TypeScript)、PowerPoint操作だけ PowerShell + COM
 - 完成済みの既存スライドは `archive/` に置き、精査・検査の対象外(索引とPages公開には含める)
 - PowerPointテンプレート(.potx)は自作して `templates/` に置く
