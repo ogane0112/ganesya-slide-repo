@@ -26,15 +26,19 @@ Marpで作った学習・まとめ・講座スライドを集約し、作成か�
 ## 現状
 
 - 済: 要件定義、テーマ、サンプルデッキ `decks/learning/2026-09-ecs-fargate/`、レイアウト検査の試作 `tools/layout/snapshot.mjs`(L-01/L-02/L-07相当)
+- 済(フェーズ1): フォルダ構成、雛形 `templates/deck/slides.md`、`tools/cli.ts`(new / build / validate / list)。archive/ への既存スライドの集約はユーザー作業待ち
 - 未決: 検査の閾値のうち L-04(1枚の行数・文字数上限)と、種別(学習/まとめ/講座)ごとの見た目の差 → ユーザーと相談して決める
-- 次のタスク: `docs/requirements.md` の「開発フェーズ」1→2→3→4 の順
+- 次のタスク: `docs/requirements.md` の「開発フェーズ」2(レイアウト検査)→3→4 の順
 
 ## コマンド
 
 ```bash
 npm install
 npx marp --server decks                      # プレビュー
-npm run build                                # dist/ に一括出力
+npm run new -- <slug> --category 講座 [--title ...]   # 雛形から新規デッキ
+npm run validate                             # frontmatter検査(M-02、archive/は警告のみ)
+npm run build [-- <パス...>] [--format html,pdf,pptx]   # dist/<デッキのパス>/ に一括出力
+npm run typecheck
 node tools/layout/snapshot.mjs <slides.md> dist/preview   # PNG書き出し+はみ出し検査(違反でexit 1)
 ```
 
@@ -43,5 +47,6 @@ node tools/layout/snapshot.mjs <slides.md> dist/preview   # PNG書き出し+は�
 - Marp標準テーマは `place-content: safe center center` で中身を縦中央に寄せる。上詰め系の調整は `display:flex` + `justify-content` を `!important` で上書きしている
 - テーマのGoogle Fonts `@import` はネットワーク制限下だと効かない。ローカル描画ではフォントをOSにインストールしておく
 - Marp CLIの `--images png` はヘッドレスChromeが不安定なことがあった。検査・プレビュー画像は Playwright で自前描画する方式(snapshot.mjs)を基本にする
-- Playwrightのブラウザを別パスで使う場合は `CHROME_PATH` 環境変数で指定できる
+- Playwrightのブラウザを別パスで使う場合は `CHROME_PATH` 環境変数で指定できる。`build` のPDF/PPTXも `CHROME_PATH` → Playwright同梱Chromium → Marp CLIの自動検出の順で探す
+- TypeScriptは tsx で直接実行(ビルド不要)。相対importは `.ts` 拡張子付きで書く
 - 原稿でHTMLのdivを使うため `.marprc.yml` で `html: true`。div内でMarkdownを使うときは前後に空行を入れる
