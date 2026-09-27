@@ -16,36 +16,45 @@ export interface NoulQuestion extends QuestionBase {
 }
 export interface ScoreQuestion extends QuestionBase {
   type: 'score'
-  scale: [number, number]
-  caution: number[]
-  warn: number[]
+  /** 段階の説明(低い順)。判定値は 1〜levels.length に換算する */
+  levels: string[]
+  /** high / low: 値の向き。both: ideal からのずれ(絶対値)で判定 */
+  bad: 'high' | 'low' | 'both'
+  ideal?: number
+  caution: number
+  warn: number
 }
 export interface ChoiceQuestion extends QuestionBase {
   type: 'choice'
-  choices: string[]
+  /** 選択肢 → 説明 */
+  choices: Record<string, string | null>
 }
 export type Question = NoulQuestion | ScoreQuestion | ChoiceQuestion
 
 export interface ReviewConfig {
+  model: string
   failOn: FailOn
-  minConfidence: number
+  skipOnTitleSlide: string[]
   questions: Record<string, Question>
 }
 
+/** Jevの答えを判定用にならしたもの(score は 1始まりに換算済み) */
 export type Answer =
-  | { type: 'noul'; probability: number; confidence?: number }
-  | { type: 'score'; score: number; confidence?: number }
-  | { type: 'choice'; choice: string; confidence?: number }
+  | { type: 'noul'; probability: number }
+  | { type: 'score'; value: number }
+  | { type: 'choice'; choice: string; probability?: number }
 
-export function judge(q: Question, a: Answer, minConfidence = 0): Verdict {
-  if (a.confidence !== undefined && a.confidence < minConfidence) return 'ok'
-  if (q.type === 'noul' && a.type === 'noul') {
-    const p = a.probability
-    if (q.bad === 'high') return p >= q.warn ? 'warn' : p >= q.caution ? 'caution' : 'ok'
-    return p <= q.warn ? 'warn' : p <= q.caution ? 'caution' : 'ok'
-  }
+/** 数値を閾値と比べる。bad が high なら大きいほど悪い、low なら小さいほど悪い */
+function grade(x: number, bad: 'high' | 'low', caution: number, warn: number): Verdict {
+  if (bad === 'high') return x >= warn ? 'warn' : x >= caution ? 'caution' : 'ok'
+  return x <= warn ? 'warn' : x <= caution ? 'caution' : 'ok'
+}
+
+export function judge(q: Question, a: Answer): Verdict {
+  if (q.type === 'noul' && a.type === 'noul') return grade(a.probability, q.bad, q.caution, q.warn)
   if (q.type === 'score' && a.type === 'score') {
-    return q.warn.includes(a.score) ? 'warn' : q.caution.includes(a.score) ? 'caution' : 'ok'
+    if (q.bad === 'both') return grade(Math.abs(a.value - (q.ideal ?? 0)), 'high', q.caution, q.warn)
+    return grade(a.value, q.bad, q.caution, q.warn)
   }
   if (q.type === 'choice' && a.type === 'choice') return 'ok'
   throw new Error(`質問の型(${q.type})と答えの型(${a.type})が合わない`)
@@ -58,21 +67,44 @@ export function shouldFail(verdict: Verdict, q: Question, cfg: ReviewConfig): bo
   return failOn === 'caution' || verdict === 'warn'
 }
 
-/** 設定の矛盾(閾値の向き・範囲外の段階)を検出する */
+/** 答えを人が読める形にする(レポート用) */
+export function describeAnswer(q: Question, a: Answer): string {
+  if (a.type === 'noul') return `確率 ${a.probability.toFixed(2)}`
+  if (a.type === 'score' && q.type === 'score') {
+    const nearest = q.levels[Math.min(q.levels.length, Math.max(1, Math.round(a.value))) - 1]
+    return `${a.value.toFixed(1)} / ${q.levels.length}(${nearest})`
+  }
+  if (a.type === 'choice') return `${a.choice}${a.probability !== undefined ? `(${a.probability.toFixed(2)})` : ''}`
+  return ''
+}
+
+/** 設定の矛盾(閾値の向き・範囲外)を検出する */
 export function validateReviewConfig(cfg: ReviewConfig): string[] {
   const errors: string[] = []
+  const order = (id: string, bad: 'high' | 'low', caution: number, warn: number) => {
+    if (bad === 'high' && warn < caution) errors.push(`${id}: bad: high なら warn ≥ caution`)
+    if (bad === 'low' && warn > caution) errors.push(`${id}: bad: low なら warn ≤ caution`)
+  }
   for (const [id, q] of Object.entries(cfg.questions)) {
     if (q.type === 'noul') {
       if ([q.caution, q.warn].some((v) => !(v >= 0 && v <= 1))) errors.push(`${id}: caution/warn は 0〜1`)
-      else if (q.bad === 'high' && q.warn < q.caution) errors.push(`${id}: bad: high なら warn ≥ caution`)
-      else if (q.bad === 'low' && q.warn > q.caution) errors.push(`${id}: bad: low なら warn ≤ caution`)
+      else order(id, q.bad, q.caution, q.warn)
     } else if (q.type === 'score') {
-      const [lo, hi] = q.scale
-      const out = [...q.caution, ...q.warn].filter((s) => s < lo || s > hi)
-      if (out.length) errors.push(`${id}: 段階 ${out.join(',')} が scale [${lo}, ${hi}] の範囲外`)
-      const both = q.caution.filter((s) => q.warn.includes(s))
-      if (both.length) errors.push(`${id}: 段階 ${both.join(',')} が caution と warn の両方にある`)
+      const n = q.levels?.length ?? 0
+      if (n < 2 || n > 10) errors.push(`${id}: levels は2〜10個`)
+      if (q.bad === 'both') {
+        if (q.ideal === undefined || q.ideal < 1 || q.ideal > n) errors.push(`${id}: bad: both には 1〜${n} の ideal が必要`)
+        order(id, 'high', q.caution, q.warn)
+      } else {
+        if ([q.caution, q.warn].some((v) => !(v >= 1 && v <= n))) errors.push(`${id}: caution/warn は 1〜${n}`)
+        order(id, q.bad, q.caution, q.warn)
+      }
+    } else if (q.type === 'choice') {
+      if (!q.choices || Object.keys(q.choices).length < 2) errors.push(`${id}: choices は2つ以上`)
     }
+  }
+  for (const id of cfg.skipOnTitleSlide) {
+    if (!cfg.questions[id]) errors.push(`skipOnTitleSlide: ${id} は questions にない`)
   }
   return errors
 }

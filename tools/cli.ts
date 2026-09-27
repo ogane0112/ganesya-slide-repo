@@ -2,7 +2,8 @@
 //   new <slug> [--category 学習|まとめ|講座] [--title タイトル]  雛形から新規デッキを作る(M-03)
 //   build [デッキのパス...] [--format html,pdf,pptx]            HTML/PDF/PPTXを dist/ に一括出力(M-05)
 //   validate                                                   全デッキのfrontmatterを検査(M-02)
-//   check [デッキのパス...] [--out reports] [--no-images]      レイアウト検査(L-01〜L-03, L-07)。Must違反で exit 1
+//   check [デッキのパス...] [--out reports] [--no-images] [--no-layout] [--no-review]
+//                                                              レイアウト検査(L-xx)+Jev精査(J-xx)→統合レポート。要対応で exit 1
 //   list                                                       デッキの一覧を表示
 import fs from 'node:fs'
 import path from 'node:path'
@@ -10,10 +11,13 @@ import { parseArgs } from 'node:util'
 import { marpCli } from '@marp-team/marp-cli'
 import { checkLayout } from './layout/check.ts'
 import { findBrowserPath, launchBrowser } from './lib/browser.ts'
-import { loadLayoutConfig } from './lib/config.ts'
+import { loadLayoutConfig, loadReviewConfig } from './lib/config.ts'
 import { CATEGORIES, type Category, type Deck, findDecks, ROOT, validateMeta } from './lib/decks.ts'
 import { type DeckResult, type Finding, hasFailure, isFailure, renderMarkdown, type Report, writeReport } from './lib/report.ts'
 import { splitSlides } from './lib/slides.ts'
+import { createJevEvaluator, type Evaluator, hasJevCredentials, withCache } from './review/jev.ts'
+import { reviewDeck } from './review/review.ts'
+import { validateReviewConfig } from './review/verdict.ts'
 
 const FORMATS = ['html', 'pdf', 'pptx'] as const
 type Format = (typeof FORMATS)[number]
@@ -26,6 +30,10 @@ const commands: Record<string, (argv: string[]) => Promise<number> | number> = {
   check: cmdCheck,
   list: cmdList,
 }
+
+// APIキーはローカルでは .env から読む(CIでは環境変数で渡す)
+const envFile = path.join(ROOT, '.env')
+if (fs.existsSync(envFile)) process.loadEnvFile(envFile)
 
 if (!command || !commands[command]) {
   console.error('使い方: npm run cli -- <new|build|validate|check|list> [...]')
@@ -175,7 +183,12 @@ async function cmdCheck(argv: string[]): Promise<number> {
   const { values, positionals } = parseArgs({
     args: argv,
     allowPositionals: true,
-    options: { out: { type: 'string', default: 'reports' }, 'no-images': { type: 'boolean', default: false } },
+    options: {
+      out: { type: 'string', default: 'reports' },
+      'no-images': { type: 'boolean', default: false },
+      'no-layout': { type: 'boolean', default: false },
+      'no-review': { type: 'boolean', default: false },
+    },
   })
   const selected = selectDecks(positionals)
   // archive/ は完成済みなので検査しない(M-07)
@@ -186,24 +199,66 @@ async function cmdCheck(argv: string[]): Promise<number> {
     return selected.length ? 0 : 1
   }
 
-  const cfg = loadLayoutConfig()
+  const report: Report = { generatedAt: new Date().toISOString(), decks: [], findings: [], notes: [] }
+  const note = (msg: string) => {
+    console.warn(`注意: ${msg}`)
+    report.notes?.push(msg)
+  }
+
+  // Jev精査の準備。キーが無い・呼び出しに失敗したときは精査だけスキップする(レイアウト検査は続ける)
+  const reviewCfg = loadReviewConfig()
+  const cfgErrors = validateReviewConfig(reviewCfg)
+  if (cfgErrors.length) {
+    for (const e of cfgErrors) console.error(`config/review.yml: ${e}`)
+    return 1
+  }
+  let evaluate: Evaluator | undefined
+  let cache: ReturnType<typeof withCache> | undefined
+  if (values['no-review']) {
+    // 明示的に切ったときは注記しない
+  } else if (!hasJevCredentials()) {
+    note('AI_GATEWAY_API_KEY が無いため、Jev精査はスキップした')
+  } else {
+    cache = withCache(createJevEvaluator(reviewCfg.model), path.join(ROOT, '.cache', 'jev.json'), reviewCfg.model)
+    evaluate = cache
+  }
+
+  const layoutCfg = loadLayoutConfig()
   const outRoot = path.resolve(values.out)
-  const report: Report = { generatedAt: new Date().toISOString(), decks: [], findings: [] }
-  const browser = await launchBrowser()
+  const browser = values['no-layout'] ? undefined : await launchBrowser()
   try {
     for (const deck of decks) {
-      const outDir = values['no-images'] ? undefined : path.join(outRoot, deck.relDir)
-      const res = await checkLayout({ file: deck.file, deck: deck.relDir }, browser, cfg, outDir)
-      const result: DeckResult = { deck: deck.relDir, title: String(deck.meta.title ?? deck.slug), slides: res.slides }
-      if (res.contactSheet) result.contactSheet = path.relative(outRoot, res.contactSheet).split(path.sep).join('/')
+      const result: DeckResult = { deck: deck.relDir, title: String(deck.meta.title ?? deck.slug), slides: 0 }
+      const findings: Finding[] = []
+      if (browser) {
+        const outDir = values['no-images'] ? undefined : path.join(outRoot, deck.relDir)
+        const res = await checkLayout({ file: deck.file, deck: deck.relDir }, browser, layoutCfg, outDir)
+        result.slides = res.slides
+        if (res.contactSheet) result.contactSheet = path.relative(outRoot, res.contactSheet).split(path.sep).join('/')
+        findings.push(...res.findings)
+      }
+      if (evaluate) {
+        try {
+          const res = await reviewDeck({ file: deck.file, deck: deck.relDir, meta: deck.meta }, reviewCfg, evaluate)
+          findings.push(...res.findings)
+          if (Object.keys(res.sources).length) result.sources = res.sources
+        } catch (e) {
+          note(`Jevの呼び出しに失敗したため、${deck.relDir} 以降の精査はスキップした(${e instanceof Error ? e.message : e})`)
+          evaluate = undefined
+        }
+      }
+      const slideCount = result.slides || splitSlides(fs.readFileSync(deck.file, 'utf8')).length
+      result.slides = slideCount
       report.decks.push(result)
-      report.findings.push(...res.findings)
-      console.log(`${res.findings.length ? 'NG' : 'OK'}: ${deck.relDir}(${res.slides}枚、指摘${res.findings.length}件)`)
-      printFindings(deck, res.slides, res.findings)
+      report.findings.push(...findings)
+      const fails = findings.filter(isFailure).length
+      console.log(`${fails ? 'NG' : 'OK'}: ${deck.relDir}(${slideCount}枚、要対応${fails}件 / 指摘${findings.length}件)`)
+      printFindings(deck, slideCount, findings)
     }
   } finally {
-    await browser.close()
+    await browser?.close()
   }
+  if (cache) console.log(`Jev: ${cache.misses}リクエスト(キャッシュ利用 ${cache.hits}件)`)
 
   const { md } = writeReport(report, outRoot)
   console.log(`レポート: ${path.relative(ROOT, md)}`)
