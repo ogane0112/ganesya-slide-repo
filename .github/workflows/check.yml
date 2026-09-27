@@ -1,0 +1,55 @@
+# PR時にレイアウト検査を実行し、Must違反(はみ出し・小さすぎる文字)があれば失敗させる
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  layout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # 描画結果で判定するので、ローカルと同じフォントを入れる
+      # (Zen Maru Gothic はテーマの Google Fonts @import で読み込まれる)
+      - name: フォントのインストール
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk fonts-noto-color-emoji
+          gh release download --repo yuru7/udev-gothic --pattern 'UDEVGothic_v*.zip' --dir "$RUNNER_TEMP/udev"
+          mkdir -p ~/.local/share/fonts
+          unzip -j -o "$RUNNER_TEMP"/udev/*.zip '*.ttf' -d ~/.local/share/fonts
+          fc-cache -f
+          fc-list | grep -i 'UDEV Gothic' | head -1
+
+      - run: npx playwright install --with-deps chromium
+
+      - run: npm run typecheck
+      - run: npm run validate
+      - run: npm test
+
+      - name: レイアウト検査
+        run: npm run check
+
+      - name: レポートとスクリーンショットを保存
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: layout-report
+          path: reports/
+          if-no-files-found: ignore

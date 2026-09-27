@@ -2,12 +2,18 @@
 //   new <slug> [--category 学習|まとめ|講座] [--title タイトル]  雛形から新規デッキを作る(M-03)
 //   build [デッキのパス...] [--format html,pdf,pptx]            HTML/PDF/PPTXを dist/ に一括出力(M-05)
 //   validate                                                   全デッキのfrontmatterを検査(M-02)
+//   check [デッキのパス...] [--out reports] [--no-images]      レイアウト検査(L-01〜L-03, L-07)。Must違反で exit 1
 //   list                                                       デッキの一覧を表示
 import fs from 'node:fs'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { marpCli } from '@marp-team/marp-cli'
+import { checkLayout } from './layout/check.ts'
+import { findBrowserPath, launchBrowser } from './lib/browser.ts'
+import { loadLayoutConfig } from './lib/config.ts'
 import { CATEGORIES, type Category, type Deck, findDecks, ROOT, validateMeta } from './lib/decks.ts'
+import { type DeckResult, type Finding, hasMustViolation, renderMarkdown, type Report, writeReport } from './lib/report.ts'
+import { splitSlides } from './lib/slides.ts'
 
 const FORMATS = ['html', 'pdf', 'pptx'] as const
 type Format = (typeof FORMATS)[number]
@@ -17,11 +23,12 @@ const commands: Record<string, (argv: string[]) => Promise<number> | number> = {
   new: cmdNew,
   build: cmdBuild,
   validate: cmdValidate,
+  check: cmdCheck,
   list: cmdList,
 }
 
 if (!command || !commands[command]) {
-  console.error('使い方: npm run cli -- <new|build|validate|list> [...]')
+  console.error('使い方: npm run cli -- <new|build|validate|check|list> [...]')
   process.exit(command ? 1 : 0)
 }
 process.exitCode = await commands[command](rest)
@@ -105,17 +112,13 @@ async function cmdBuild(argv: string[]): Promise<number> {
     return 1
   }
 
-  let decks = findDecks()
-  if (positionals.length) {
-    const wanted = positionals.map((p) => path.relative(ROOT, path.resolve(p)).split(path.sep).join('/'))
-    decks = decks.filter((d) => wanted.some((w) => d.relDir === w || d.relDir.startsWith(`${w}/`) || `${d.relDir}/slides.md` === w))
-  }
+  const decks = selectDecks(positionals)
   if (!decks.length) {
     console.error('対象のデッキがない')
     return 1
   }
 
-  const browserPath = formats.some((f) => f !== 'html') ? await findBrowser() : undefined
+  const browserPath = formats.some((f) => f !== 'html') ? findBrowserPath() : undefined
   let failed = 0
   for (const deck of decks) {
     const outDir = path.join(ROOT, 'dist', deck.relDir)
@@ -151,21 +154,80 @@ function marpArgs(deck: Deck, format: Format, out: string, browserPath?: string)
   return args
 }
 
-/** CHROME_PATH がなければ Playwright の Chromium を使う(見つからなければMarp CLIの自動検出に任せる) */
-async function findBrowser(): Promise<string | undefined> {
-  if (process.env.CHROME_PATH) return process.env.CHROME_PATH
-  try {
-    const { chromium } = await import('playwright')
-    const p = chromium.executablePath()
-    return fs.existsSync(p) ? p : undefined
-  } catch {
-    return undefined
-  }
-}
-
 /** HTML版から相対パスで画像を参照できるように images/ をコピーする */
 function copyImages(deck: Deck, outDir: string): void {
   const src = path.join(path.dirname(deck.file), 'images')
   if (!fs.existsSync(src)) return
   fs.cpSync(src, path.join(outDir, 'images'), { recursive: true, filter: (p) => path.basename(p) !== '.gitkeep' })
+}
+
+/** 引数のパス(フォルダ or slides.md)に一致するデッキ。指定がなければ全部 */
+function selectDecks(paths: string[]): Deck[] {
+  const decks = findDecks()
+  if (!paths.length) return decks
+  const wanted = paths.map((p) => path.relative(ROOT, path.resolve(p)).split(path.sep).join('/'))
+  return decks.filter((d) =>
+    wanted.some((w) => w === '' || d.relDir === w || d.relDir.startsWith(`${w}/`) || `${d.relDir}/slides.md` === w),
+  )
+}
+
+async function cmdCheck(argv: string[]): Promise<number> {
+  const { values, positionals } = parseArgs({
+    args: argv,
+    allowPositionals: true,
+    options: { out: { type: 'string', default: 'reports' }, 'no-images': { type: 'boolean', default: false } },
+  })
+  const selected = selectDecks(positionals)
+  // archive/ は完成済みなので検査しない(M-07)
+  const decks = selected.filter((d) => !d.archived)
+  if (selected.length > decks.length) console.log(`archive/ の${selected.length - decks.length}デッキは検査対象外`)
+  if (!decks.length) {
+    console.error('検査対象のデッキがない')
+    return selected.length ? 0 : 1
+  }
+
+  const cfg = loadLayoutConfig()
+  const outRoot = path.resolve(values.out)
+  const report: Report = { generatedAt: new Date().toISOString(), decks: [], findings: [] }
+  const browser = await launchBrowser()
+  try {
+    for (const deck of decks) {
+      const outDir = values['no-images'] ? undefined : path.join(outRoot, deck.relDir)
+      const res = await checkLayout({ file: deck.file, deck: deck.relDir }, browser, cfg, outDir)
+      const result: DeckResult = { deck: deck.relDir, title: String(deck.meta.title ?? deck.slug), slides: res.slides }
+      if (res.contactSheet) result.contactSheet = path.relative(outRoot, res.contactSheet).split(path.sep).join('/')
+      report.decks.push(result)
+      report.findings.push(...res.findings)
+      console.log(`${res.findings.length ? 'NG' : 'OK'}: ${deck.relDir}(${res.slides}枚、指摘${res.findings.length}件)`)
+      printFindings(deck, res.slides, res.findings)
+    }
+  } finally {
+    await browser.close()
+  }
+
+  const { md } = writeReport(report, outRoot)
+  console.log(`レポート: ${path.relative(ROOT, md)}`)
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    // サマリーでは相対パスの画像が表示できないので外す
+    const summary = renderMarkdown(report).replace(/^!\[.*\n?/gm, '')
+    fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary)
+  }
+  return hasMustViolation(report) ? 1 : 0
+}
+
+/** 指摘を表示する。GitHub Actions上では原稿の該当行に注釈を付ける */
+function printFindings(deck: Deck, slideCount: number, findings: Finding[]): void {
+  const sources = splitSlides(fs.readFileSync(deck.file, 'utf8'))
+  // 分割結果が描画枚数と食い違うときは行番号を付けない
+  const lineOf = (no: number) => (sources.length === slideCount ? sources[no - 1]?.line : undefined) ?? 1
+  const file = path.relative(ROOT, deck.file).split(path.sep).join('/')
+  for (const f of findings) {
+    const where = `${file}:${lineOf(f.slide)}`
+    console.log(`  slide ${f.slide} [${f.rule}/${f.level}] ${f.message}(${where})`)
+    if (process.env.GITHUB_ACTIONS) {
+      const kind = f.level === 'must' ? 'error' : 'warning'
+      const msg = `slide ${f.slide}: ${f.message}`.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A')
+      console.log(`::${kind} file=${file},line=${lineOf(f.slide)},title=${f.rule}::${msg}`)
+    }
+  }
 }
