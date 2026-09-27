@@ -29,6 +29,7 @@ Marpで作った学習・まとめ・講座スライドを集約し、作成か�
 - 済(フェーズ1): フォルダ構成、雛形 `templates/deck/slides.md`、`tools/cli.ts`(new / build / validate / list)。archive/ への既存スライドの集約はユーザー作業待ち
 - 済(フェーズ2): レイアウト検査 `tools/layout/`(L-01/L-02/L-03/L-07)、統合レポート `tools/lib/report.ts`(reports/report.md・json)、CI `.github/workflows/check.yml`
 - 未決: 検査の閾値のうち L-04(1枚の行数・文字数上限)と、種別(学習/まとめ/講座)ごとの見た目の差 → ユーザーと相談して決める
+- 済(フェーズ3の準備): Jevの判定を OK / 注意 / 警告 に振り分ける `tools/review/verdict.ts`、質問と閾値 `config/review.yml`(閾値はユーザーが調整する前提の仮値)。Jevの呼び出し本体は未実装(AI_GATEWAY_API_KEY 待ち)
 - 次のタスク: `docs/requirements.md` の「開発フェーズ」3(Jev精査)→4 の順。Jevの指摘も `Finding` 型でレポートに統合する
 
 ## コマンド

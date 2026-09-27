@@ -3,8 +3,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-/** must の指摘が1件でもあれば終了コード1(CIで失敗させる) */
-export type Level = 'must' | 'should' | 'could'
+/**
+ * must / should / could: レイアウト検査などの要件の優先度
+ * warn / caution: Jev精査の判定(警告 / 注意)。OKは指摘に残さない
+ */
+export type Level = 'must' | 'should' | 'could' | 'warn' | 'caution'
 
 export interface Finding {
   /** デッキのフォルダ(ROOTからの相対パス) */
@@ -15,6 +18,8 @@ export interface Finding {
   rule: string
   level: Level
   message: string
+  /** true ならCIを失敗させる(must は常に失敗。Jev精査は config/review.yml の failOn で決まる) */
+  fail?: boolean
 }
 
 export interface DeckResult {
@@ -31,25 +36,34 @@ export interface Report {
   findings: Finding[]
 }
 
-const LEVEL_LABEL: Record<Level, string> = { must: '❌ Must', should: '⚠️ Should', could: '💭 Could' }
+const LEVEL_LABEL: Record<Level, string> = {
+  must: '❌ Must',
+  should: '⚠️ Should',
+  could: '💭 Could',
+  warn: '🔴 警告',
+  caution: '🟡 注意',
+}
 
-export function hasMustViolation(report: Report): boolean {
-  return report.findings.some((f) => f.level === 'must')
+export const isFailure = (f: Finding): boolean => f.level === 'must' || f.fail === true
+
+/** CIを失敗させる指摘が1件でもあれば終了コード1 */
+export function hasFailure(report: Report): boolean {
+  return report.findings.some(isFailure)
 }
 
 export function renderMarkdown(report: Report): string {
   const lines: string[] = ['# 検査レポート', '', `生成: ${report.generatedAt}`, '']
-  const must = report.findings.filter((f) => f.level === 'must').length
-  const other = report.findings.length - must
+  const fail = report.findings.filter(isFailure).length
+  const other = report.findings.length - fail
   lines.push(
-    must ? `**NG**: Must違反 ${must}件 / その他 ${other}件` : `**OK**: Must違反なし(その他 ${other}件)`,
+    fail ? `**NG**: 要対応 ${fail}件 / その他 ${other}件` : `**OK**: 要対応なし(その他 ${other}件)`,
     '',
-    '| デッキ | 枚数 | Must | その他 |',
+    '| デッキ | 枚数 | 要対応 | その他 |',
     '| --- | --- | --- | --- |',
   )
   for (const d of report.decks) {
     const fs_ = report.findings.filter((f) => f.deck === d.deck)
-    const m = fs_.filter((f) => f.level === 'must').length
+    const m = fs_.filter(isFailure).length
     lines.push(`| ${d.title}<br>\`${d.deck}\` | ${d.slides} | ${m} | ${fs_.length - m} |`)
   }
 
@@ -61,7 +75,8 @@ export function renderMarkdown(report: Report): string {
     if (items.length) {
       lines.push('| スライド | 要件 | 区分 | 内容 |', '| --- | --- | --- | --- |')
       for (const f of items) {
-        lines.push(`| ${f.slide || '全体'} | ${f.rule} | ${LEVEL_LABEL[f.level]} | ${escapeCell(f.message)} |`)
+        const label = `${LEVEL_LABEL[f.level]}${f.fail && f.level !== 'must' ? '(要対応)' : ''}`
+        lines.push(`| ${f.slide || '全体'} | ${f.rule} | ${label} | ${escapeCell(f.message)} |`)
       }
     } else {
       lines.push('指摘なし')

@@ -8,7 +8,7 @@ import { Marp } from '@marp-team/marp-core'
 import type { Browser, Page } from 'playwright'
 import type { LayoutConfig } from '../lib/config.ts'
 import { ROOT } from '../lib/decks.ts'
-import type { Finding, Level } from '../lib/report.ts'
+import { type Finding, isFailure, type Level } from '../lib/report.ts'
 
 export const LAYOUT_RULES: Record<string, Level> = { 'L-01': 'must', 'L-02': 'must', 'L-03': 'must' }
 
@@ -85,7 +85,7 @@ export async function checkLayout(
     if (outDir) {
       const shots = await screenshotSlides(page, path.join(outDir, 'slides'))
       result.images = shots
-      const bad = new Set(findings.filter((f) => f.level === 'must').map((f) => f.slide))
+      const bad = new Set(findings.filter(isFailure).map((f) => f.slide))
       result.contactSheet = path.join(outDir, 'contact.png')
       await writeContactSheet(browser, shots, bad, cfg, result.contactSheet)
     }

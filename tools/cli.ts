@@ -12,7 +12,7 @@ import { checkLayout } from './layout/check.ts'
 import { findBrowserPath, launchBrowser } from './lib/browser.ts'
 import { loadLayoutConfig } from './lib/config.ts'
 import { CATEGORIES, type Category, type Deck, findDecks, ROOT, validateMeta } from './lib/decks.ts'
-import { type DeckResult, type Finding, hasMustViolation, renderMarkdown, type Report, writeReport } from './lib/report.ts'
+import { type DeckResult, type Finding, hasFailure, isFailure, renderMarkdown, type Report, writeReport } from './lib/report.ts'
 import { splitSlides } from './lib/slides.ts'
 
 const FORMATS = ['html', 'pdf', 'pptx'] as const
@@ -212,7 +212,7 @@ async function cmdCheck(argv: string[]): Promise<number> {
     const summary = renderMarkdown(report).replace(/^!\[.*\n?/gm, '')
     fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary)
   }
-  return hasMustViolation(report) ? 1 : 0
+  return hasFailure(report) ? 1 : 0
 }
 
 /** 指摘を表示する。GitHub Actions上では原稿の該当行に注釈を付ける */
@@ -225,7 +225,7 @@ function printFindings(deck: Deck, slideCount: number, findings: Finding[]): voi
     const where = `${file}:${lineOf(f.slide)}`
     console.log(`  slide ${f.slide} [${f.rule}/${f.level}] ${f.message}(${where})`)
     if (process.env.GITHUB_ACTIONS) {
-      const kind = f.level === 'must' ? 'error' : 'warning'
+      const kind = isFailure(f) ? 'error' : 'warning'
       const msg = `slide ${f.slide}: ${f.message}`.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A')
       console.log(`::${kind} file=${file},line=${lineOf(f.slide)},title=${f.rule}::${msg}`)
     }

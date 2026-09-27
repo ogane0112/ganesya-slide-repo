@@ -2,6 +2,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
+import type { ReviewConfig } from '../review/verdict.ts'
 import { ROOT } from './decks.ts'
 
 export interface LayoutConfig {
@@ -23,4 +24,9 @@ export function loadLayoutConfig(file = path.join(ROOT, 'config', 'layout.yml'))
     ...data,
     contactSheet: { ...LAYOUT_DEFAULTS.contactSheet, ...data.contactSheet },
   }
+}
+
+export function loadReviewConfig(file = path.join(ROOT, 'config', 'review.yml')): ReviewConfig {
+  const data = parseYaml(fs.readFileSync(file, 'utf8')) ?? {}
+  return { failOn: 'none', minConfidence: 0, questions: {}, ...data }
 }
