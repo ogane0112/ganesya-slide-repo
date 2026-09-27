@@ -3,13 +3,26 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "marp --input-dir decks --output dist --html",
+    "cli": "tsx tools/cli.ts",
+    "new": "tsx tools/cli.ts new",
+    "build": "tsx tools/cli.ts build",
+    "build:html": "tsx tools/cli.ts build --format html",
+    "validate": "tsx tools/cli.ts validate",
+    "list": "tsx tools/cli.ts list",
+    "typecheck": "tsc",
     "preview": "marp --server decks",
     "check:layout": "node tools/layout/snapshot.mjs"
   },
   "devDependencies": {
     "@marp-team/marp-cli": "^4.5.1",
     "@marp-team/marp-core": "^4.4.0",
-    "playwright": "^1.55.1"
+    "@types/node": "^26.6.3",
+    "playwright": "^1.55.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "yaml": "^2.9.1"
+  },
+  "engines": {
+    "node": ">=20.11"
   }
 }
