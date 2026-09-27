@@ -20,8 +20,6 @@ export interface ReviewResult {
   roles: Record<number, string>
 }
 
-const CONCURRENCY = 4
-
 /** Marpのディレクティブ(<!-- _class: title --> 等)は判定のノイズなので外す。発表者ノートは残す */
 function stripDirectives(md: string): string {
   return md
@@ -79,7 +77,7 @@ export async function reviewDeck(target: ReviewTarget, cfg: ReviewConfig, evalua
       if (findings.length > before) sources[s.no] = s.body.trim()
     }
   }
-  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, slides.length) }, worker))
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(cfg.concurrency, slides.length)) }, worker))
 
   // デッキ全体への質問(J-06)は見出しの一覧をStateにして1リクエスト
   if (Object.keys(deckQuestions).length) {

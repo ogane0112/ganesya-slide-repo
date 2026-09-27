@@ -12,6 +12,11 @@
 # 質問ごとに failOn を書くと上書きできる
 
 model: typesafe-ai/jev
+
+# 同時リクエスト数と、混雑エラー(rate limit)時の再試行回数。待ち時間は2秒から倍々(2,4,8,16,32秒)
+# 早期提供で混みやすいので、同時リクエストは控えめにしておく
+concurrency: 1
+retries: 5
 failOn: none
 
 # タイトルスライド(<!-- _class: title -->)では聞かない質問

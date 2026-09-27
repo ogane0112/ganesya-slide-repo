@@ -33,6 +33,10 @@ export type Question = NoulQuestion | ScoreQuestion | ChoiceQuestion
 
 export interface ReviewConfig {
   model: string
+  /** 同時に投げるリクエスト数 */
+  concurrency: number
+  /** 混雑エラー時の再試行回数 */
+  retries: number
   failOn: FailOn
   skipOnTitleSlide: string[]
   questions: Record<string, Question>

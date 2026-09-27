@@ -71,3 +71,27 @@ test('キャッシュ: 同じStateと質問なら2回目は呼ばない', async 
   assert.equal(second.hits, 7)
   assert.equal(calls.length, 7)
 })
+
+test('混雑エラー(rate limit)は間隔を空けて再試行し、それ以外のエラーはすぐ投げる', async () => {
+  const { GatewayRateLimitError } = await import('@ai-sdk/gateway')
+  let n = 0
+  const flaky: ModelV4 = {
+    ...fakeModel([]),
+    async doEvaluate(opts) {
+      n++
+      if (n <= 2) throw new GatewayRateLimitError({ message: 'high demand', statusCode: 429 })
+      return fakeModel([]).doEvaluate(opts)
+    },
+  }
+  const waits: number[] = []
+  const ev = createJevEvaluator(flaky, { retries: 3, baseDelayMs: 100, sleep: async (ms) => void waits.push(ms) })
+  const answers = await ev('state', { 'J-01': cfg.questions['J-01'] })
+  assert.equal(answers['J-01'].type, 'noul')
+  assert.equal(n, 3)
+  assert.equal(waits.length, 2)
+  assert.ok(waits[1] > waits[0])
+
+  const broken: ModelV4 = { ...fakeModel([]), doEvaluate: async () => Promise.reject(new Error('invalid key')) }
+  const ev2 = createJevEvaluator(broken, { retries: 3, sleep: async () => assert.fail('再試行しない') })
+  await assert.rejects(ev2('state', { 'J-01': cfg.questions['J-01'] }), /invalid key/)
+})
