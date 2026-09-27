@@ -1,0 +1,15 @@
+{
+  "name": "slides-repo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "marp --input-dir decks --output dist --html",
+    "preview": "marp --server decks",
+    "check:layout": "node tools/layout/snapshot.mjs"
+  },
+  "devDependencies": {
+    "@marp-team/marp-cli": "^4.5.1",
+    "@marp-team/marp-core": "^4.4.0",
+    "playwright": "^1.55.1"
+  }
+}

@@ -1,0 +1,244 @@
+/* @theme wakaba */
+/* 若葉ライト: 緑基調でちょっと緩い雰囲気のMarpテーマ(1280x720) */
+
+@import 'default';
+@import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&display=swap');
+
+:root {
+  --bg: #f4f9ee;
+  --text: #2e3a27;
+  --muted: #5f6f55;
+  --accent: #6baa45;
+  --label: #7ab258;
+  --soft: #dcefcb;
+  --line: #c9e0b4;
+  --font: 'Zen Maru Gothic', 'Hiragino Maru Gothic ProN', 'Noto Sans JP', sans-serif;
+  --mono: 'UDEV Gothic', 'BIZ UDGothic', 'Consolas', monospace;
+}
+
+section {
+  width: 1280px;
+  height: 720px;
+  padding: 48px 96px 72px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-weight: 500;
+  font-size: 28px;
+  line-height: 1.8;
+  letter-spacing: 0.03em;
+  /* 見出しは上、本文は見出しの下の残りスペースで縦中央 */
+  display: flex !important;
+  flex-direction: column;
+  justify-content: flex-start !important;
+}
+
+section > h1:first-child,
+section > h2:first-child {
+  margin-bottom: auto;
+}
+
+section > :last-child {
+  margin-bottom: auto !important;
+}
+
+/* 見出し: 中央寄せのラベル */
+section h1,
+section h2 {
+  display: table;
+  margin: 0 auto 40px;
+  padding: 6px 40px 8px;
+  flex-shrink: 0;
+  background: var(--label);
+  color: #fff;
+  border-radius: 16px;
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+}
+
+section h3 {
+  margin: 0 0 12px;
+  color: var(--accent);
+  font-size: 30px;
+  font-weight: 700;
+}
+
+section strong {
+  color: #3e6b22;
+  background: linear-gradient(transparent 62%, var(--soft) 62%);
+}
+
+section ul,
+section ol {
+  padding-left: 1.3em;
+}
+
+section ul,
+section ol {
+  margin: 0;
+}
+
+section li {
+  margin: 14px 0;
+}
+
+section li::marker {
+  color: var(--accent);
+}
+
+/* 表 */
+section table {
+  width: 100%;
+  display: table;
+  margin: 0;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  font-size: 26px;
+}
+
+section th {
+  background: var(--label);
+  color: #fff;
+  font-weight: 700;
+  border: none;
+}
+
+section td {
+  background: #fff;
+  border: none;
+  border-bottom: 1px solid var(--line);
+}
+
+section th,
+section td {
+  padding: 16px 32px;
+}
+
+section tr:last-child td {
+  border-bottom: none;
+}
+
+/* コード */
+section pre {
+  border-radius: 12px;
+  background: #fff;
+  border: 2px solid var(--line);
+  margin: 0;
+  padding: 20px 28px;
+  font-size: 22px;
+  line-height: 1.6;
+}
+
+section code {
+  font-family: var(--mono);
+}
+
+section :not(pre) > code {
+  background: var(--soft);
+  color: #3e6b22;
+  border-radius: 6px;
+  padding: 0 6px;
+}
+
+/* 吹き出し: point / warn / note / summary / ref */
+section .point,
+section .warn,
+section .note,
+section .summary,
+section .ref {
+  margin: 36px 0 0;
+  padding: 20px 32px 20px 80px;
+  border-radius: 16px;
+  position: relative;
+  font-size: 24px;
+  line-height: 1.8;
+}
+
+section .point > :first-child,
+section .warn > :first-child,
+section .note > :first-child,
+section .summary > :first-child,
+section .ref > :first-child { margin-top: 0; }
+
+section .point > :last-child,
+section .warn > :last-child,
+section .note > :last-child,
+section .summary > :last-child,
+section .ref > :last-child { margin-bottom: 0; }
+
+section .point::before,
+section .warn::before,
+section .note::before,
+section .summary::before,
+section .ref::before {
+  position: absolute;
+  left: 28px;
+  top: 20px;
+  font-size: 30px;
+  font-family: 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif;
+}
+
+section .point   { background: var(--soft); }
+section .point::before   { content: '💡'; }
+section .warn    { background: #fbefd5; }
+section .warn::before    { content: '⚠️'; }
+section .note    { background: #fff; border: 2px dashed var(--line); }
+section .note::before    { content: '📝'; }
+section .summary { background: #fff; border: 3px solid var(--label); }
+section .summary ul { padding-left: 0.9em; }
+section .summary::before { content: '✅'; }
+section .ref     { background: transparent; font-size: 20px; color: var(--muted); padding-left: 60px; }
+section .ref::before     { content: '🔗'; font-size: 22px; top: 14px; }
+
+/* ページ番号 */
+section::after {
+  right: 32px;
+  bottom: 20px;
+  padding: 2px 14px;
+  border-radius: 999px;
+  background: var(--soft);
+  color: #3e6b22;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+/* タイトルスライド */
+section.title {
+  justify-content: center !important;
+  align-items: center;
+  text-align: center;
+}
+
+section.title > :last-child {
+  margin-bottom: 0 !important;
+}
+
+section.title h1 {
+  font-size: 60px;
+  padding: 14px 56px 16px;
+  border-radius: 24px;
+  margin-bottom: 28px;
+}
+
+section.title p {
+  margin: 4px 0;
+  color: var(--muted);
+  font-size: 26px;
+}
+
+section.title .tag {
+  display: inline-block;
+  margin-bottom: 20px;
+  padding: 2px 18px;
+  border-radius: 999px;
+  background: var(--soft);
+  color: #3e6b22;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+section.title::after { display: none; }
