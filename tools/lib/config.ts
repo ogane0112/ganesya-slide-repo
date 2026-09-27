@@ -28,5 +28,5 @@ export function loadLayoutConfig(file = path.join(ROOT, 'config', 'layout.yml'))
 
 export function loadReviewConfig(file = path.join(ROOT, 'config', 'review.yml')): ReviewConfig {
   const data = parseYaml(fs.readFileSync(file, 'utf8')) ?? {}
-  return { model: 'typesafe-ai/jev', failOn: 'none', skipOnTitleSlide: [], questions: {}, ...data }
+  return { model: 'typesafe-ai/jev', concurrency: 1, retries: 5, failOn: 'none', skipOnTitleSlide: [], questions: {}, ...data }
 }

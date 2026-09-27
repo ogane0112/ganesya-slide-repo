@@ -15,7 +15,7 @@ import { loadLayoutConfig, loadReviewConfig } from './lib/config.ts'
 import { CATEGORIES, type Category, type Deck, findDecks, ROOT, validateMeta } from './lib/decks.ts'
 import { type DeckResult, type Finding, hasFailure, isFailure, renderMarkdown, type Report, writeReport } from './lib/report.ts'
 import { splitSlides } from './lib/slides.ts'
-import { createJevEvaluator, type Evaluator, hasJevCredentials, withCache } from './review/jev.ts'
+import { createJevEvaluator, type Evaluator, hasJevCredentials, isBusyError, withCache } from './review/jev.ts'
 import { reviewDeck } from './review/review.ts'
 import { validateReviewConfig } from './review/verdict.ts'
 
@@ -219,7 +219,11 @@ async function cmdCheck(argv: string[]): Promise<number> {
   } else if (!hasJevCredentials()) {
     note('AI_GATEWAY_API_KEY が無いため、Jev精査はスキップした')
   } else {
-    cache = withCache(createJevEvaluator(reviewCfg.model), path.join(ROOT, '.cache', 'jev.json'), reviewCfg.model)
+    const jev = createJevEvaluator(reviewCfg.model, {
+      retries: reviewCfg.retries,
+      onRetry: (n, ms) => console.warn(`Jevが混雑中のため ${Math.round(ms / 1000)}秒後に再試行(${n}/${reviewCfg.retries})`),
+    })
+    cache = withCache(jev, path.join(ROOT, '.cache', 'jev.json'), reviewCfg.model)
     evaluate = cache
   }
 
@@ -243,7 +247,8 @@ async function cmdCheck(argv: string[]): Promise<number> {
           findings.push(...res.findings)
           if (Object.keys(res.sources).length) result.sources = res.sources
         } catch (e) {
-          note(`Jevの呼び出しに失敗したため、${deck.relDir} 以降の精査はスキップした(${e instanceof Error ? e.message : e})`)
+          const hint = isBusyError(e) ? '。Jevが混雑中。時間をおいて再実行すると、答えが得られたスライドはキャッシュから再開する' : ''
+          note(`Jevの呼び出しに失敗したため、${deck.relDir} 以降の精査はスキップした(${e instanceof Error ? e.message : e})${hint}`)
           evaluate = undefined
         }
       }

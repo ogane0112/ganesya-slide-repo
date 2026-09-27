@@ -3,8 +3,9 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { createGateway } from '@ai-sdk/gateway'
+import { createGateway, GatewayError, GatewayRateLimitError } from '@ai-sdk/gateway'
 import {
+  RetryError,
   experimental_evaluate as evaluate,
   type Experimental_EvaluationModel as EvaluationModel,
   type Experimental_EvaluationQuestion as JevQuestion,
@@ -31,12 +32,42 @@ function toJevQuestion(q: Question): JevQuestion {
   }
 }
 
+/** Jev側の混雑・レート制限(時間をおけば通る)エラーか */
+export function isBusyError(e: unknown): boolean {
+  if (RetryError.isInstance(e)) return isBusyError(e.lastError)
+  if (GatewayRateLimitError.isInstance(e)) return true
+  return GatewayError.isInstance(e) && [429, 503].includes(e.statusCode)
+}
+
+export interface JevOptions {
+  /** 混雑エラーのときの再試行回数 */
+  retries?: number
+  /** 再試行の待ち時間の初期値(ms)。1回ごとに倍にする */
+  baseDelayMs?: number
+  sleep?: (ms: number) => Promise<void>
+  onRetry?: (attempt: number, delayMs: number) => void
+}
+
 /** model が文字列なら AI Gateway のモデルID。テストではモデルのオブジェクトを直接渡せる */
-export function createJevEvaluator(model: string | Exclude<EvaluationModel, string>): Evaluator {
+export function createJevEvaluator(model: string | Exclude<EvaluationModel, string>, opts: JevOptions = {}): Evaluator {
   const jev = typeof model === 'string' ? createGateway().evaluationModel(model) : model
+  const { retries = 5, baseDelayMs = 2000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), onRetry } = opts
+  // AI SDK 標準の再試行(2回・短い間隔)は切り、混雑時だけ間隔を空けて粘る
+  const call = async (questions: Record<string, JevQuestion>, state: JevState) => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await evaluate({ model: jev, state: state as never, questions, maxRetries: 0 })
+      } catch (e) {
+        if (!isBusyError(e) || attempt > retries) throw e
+        const delay = baseDelayMs * 2 ** (attempt - 1) * (1 + Math.random() * 0.25)
+        onRetry?.(attempt, delay)
+        await sleep(delay)
+      }
+    }
+  }
   return async (state, questions) => {
     const jevQuestions = Object.fromEntries(Object.entries(questions).map(([id, q]) => [id, toJevQuestion(q)]))
-    const { answers } = await evaluate({ model: jev, state: state as never, questions: jevQuestions })
+    const { answers } = await call(jevQuestions, state)
     const out: Record<string, Answer> = {}
     for (const [id, a] of Object.entries(answers)) {
       if (a.type === 'boolean') out[id] = { type: 'noul', probability: a.probability }

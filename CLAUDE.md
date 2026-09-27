@@ -55,6 +55,7 @@ npm test                                     # tools/**/*.test.ts(Chromiumが必
 - L-03 はテーマ装飾のページ番号(`section::after`、18px)を対象外にしている。閾値は `config/layout.yml`
 - Playwrightのブラウザを別パスで使う場合は `CHROME_PATH` 環境変数で指定できる。`build` のPDF/PPTXも `CHROME_PATH` → Playwright同梱Chromium → Marp CLIの自動検出の順で探す
 - Jevは AI SDK 7 の `experimental_evaluate`。Noul は `boolean` 型、Score は0始まりの小数(期待値)で返り、確信度は無い。AI SDK に触るのは `tools/review/jev.ts` だけ。テストは偽の評価モデルを渡して行う
+- Jevは有料クレジットが必要(Vercelの無料枠では使えない)。早期提供で混みやすく rate limit(high demand)が出るので、同時リクエストは `concurrency: 1`、混雑時だけ倍々の間隔で再試行(`retries`、`config/review.yml`)。AI SDK標準の再試行は切っている
 - `.env` は `tools/cli.ts` が `process.loadEnvFile` で読む。Jevの答えは `.cache/jev.json` にキャッシュ(閾値だけ変えたときは再リクエストしない)
 - TypeScriptは tsx で直接実行(ビルド不要)。相対importは `.ts` 拡張子付きで書く
 - 原稿でHTMLのdivを使うため `.marprc.yml` で `html: true`。div内でMarkdownを使うときは前後に空行を入れる
